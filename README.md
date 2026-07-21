@@ -90,6 +90,15 @@ curl -x http://127.0.0.1:3128 https://api.anthropic.com -sS -o /dev/null -w "%{h
 - `curl` が通るのに `claude` が失敗する → 証明書（手順3）を確認
 - `curl` も失敗する → px の上流プロキシ設定（手順1）を確認
 
+### `ECONNREFUSED 127.0.0.1:3128` が出る
+
+`connect ECONNREFUSED 127.0.0.1:3128` は「そのポートに誰も居ない」＝ **px が起動していない**（または別ポート）
+の意味です。px は「ダウンロード済」でも**起動していないと中継しません**。
+
+1. px を起動して開いたままにする（手順1）
+2. 待受ポートを確認: `netstat -ano | findstr LISTENING | findstr :3128`
+   - 何も出ない → `px.ini` の `port=` を確認し、npm 側の proxy をその番号に合わせる
+
 ## 補足: Windows でゼロからインストールする手順（社内プロキシ環境）
 
 `claude` が「認識されません」と出る場合はまだ未インストールです。次の順で入れます。
@@ -101,6 +110,15 @@ curl -x http://127.0.0.1:3128 https://api.anthropic.com -sS -o /dev/null -w "%{h
 1. ブラウザで <https://nodejs.org/> を開く（ブラウザは社内プロキシを自動で通る）
 2. **LTS 版**の **Windows Installer (.msi) 64-bit** をダウンロードして実行（既定のままでOK）
 3. **PowerShell を開き直して** `node -v` / `npm -v` が表示されることを確認
+
+### ②' npm が「スクリプトの実行が無効」で止まる場合
+
+`npm.ps1 を読み込むことができません`（`PSSecurityException`）が出たら、PowerShell の実行ポリシーを
+現ユーザーのみ緩めます（管理者不要）。会社ポリシーで拒否される場合は `npm` の代わりに `npm.cmd` を使う。
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # 確認は Y
+```
 
 ### ② npm を px 経由に向ける
 

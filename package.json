@@ -1,0 +1,12 @@
+{
+  "name": "yuki1108",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ローカル環境用セットアップ",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}

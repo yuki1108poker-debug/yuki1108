@@ -1,149 +1,159 @@
 # yuki1108
 
-社内ネットワーク（認証プロキシ）が原因でローカルの **Claude Code** が接続できない問題を、
-**px（px-proxy）** 経由にすることで解消し、ローカルで Claude Code を使えるようにするセットアップです。
+社内ネットワーク（プロキシ）環境で、ローカルに **Claude Code** をインストールして使うための手順です。
 
-## 仕組み
+> **結論から**: まず社内プロキシが「認証不要」かを確認してください。認証不要なら **px は不要**で、
+> npm と Claude Code をプロキシに直結するのが一番シンプルです（本リポジトリのセットアップ時はこれで解決）。
+> プロキシが認証（NTLM 等）を要求する場合のみ、px（px-proxy）を挟みます。
 
-```
-Claude Code  ──HTTPS_PROXY──▶  px (127.0.0.1:3128)  ──認証付き──▶  社内プロキシ  ──▶  インターネット
-```
+---
 
-Claude Code は環境変数 `HTTPS_PROXY` を見て通信します。これを px の待受アドレスに向ければ、
-px が社内プロキシの認証（NTLM / Kerberos など）を肩代わりして通してくれます。
+## 0. 前提
 
-## 前提
+- Windows + PowerShell
+- 管理者権限は不要（すべてユーザー範囲で完結）
 
-- Claude Code がインストール済み（未の場合は下記「補足」参照）
-- px（px-proxy）がインストール済み
+---
 
-## 1. px を起動する
+## 1. Node.js を入れる
 
-px を起動すると既定で `127.0.0.1:3128` で待ち受けます。
-
-```bash
-px            # 別ターミナルで起動したままにする
-```
-
-> 初回は上流の社内プロキシを設定します。Windows のプロキシ設定を自動検出できることが多いですが、
-> うまくいかない場合は `px --proxy=<社内プロキシ:ポート> --save` で `px.ini` に保存できます。
-
-## 2. Claude Code を px 経由で起動する
-
-### macOS / Linux
-
-```bash
-export HTTP_PROXY="http://127.0.0.1:3128"
-export HTTPS_PROXY="http://127.0.0.1:3128"
-# 社内が SSL 検査をしている場合のみ（下記参照）
-# export NODE_EXTRA_CA_CERTS="/path/to/corp-root-ca.pem"
-claude
-```
-
-同梱スクリプトでまとめて実行:
-
-```bash
-./scripts/claude-px.sh
-```
-
-### Windows（PowerShell）
+PowerShell で確認:
 
 ```powershell
-$env:HTTP_PROXY  = "http://127.0.0.1:3128"
-$env:HTTPS_PROXY = "http://127.0.0.1:3128"
-# 社内が SSL 検査をしている場合のみ
-# $env:NODE_EXTRA_CA_CERTS = "C:\certs\corp-root-ca.pem"
-claude
+node -v
+npm -v
 ```
 
-同梱スクリプトでまとめて実行:
+「認識されません」なら未インストール。ブラウザで <https://nodejs.org/> から **LTS 版の Windows Installer (.msi)**
+を入れて、**PowerShell を開き直して**再確認する（ブラウザは社内プロキシを自動で通る）。
 
-```powershell
-./scripts/claude-px.ps1
-```
+### npm が「スクリプトの実行が無効」で止まる場合
 
-## 3. SSL 検査（証明書差し替え）対策
-
-px を通しても次のようなエラーが出る場合、社内プロキシが TLS を検査していて、
-Claude Code（Node）が社内の証明書を信頼していないのが原因です。
-
-```
-Error: self-signed certificate in certificate chain
-Error: unable to get local issuer certificate
-```
-
-対処: 社内のルートCA証明書（PEM 形式）を用意し、`NODE_EXTRA_CA_CERTS` にパスを指定します。
-
-- Windows: 証明書ストアの社内ルートCAを「Base-64 (.cer/.pem)」でエクスポート
-- そのパスを上記スクリプト／環境変数の `NODE_EXTRA_CA_CERTS` に設定
-
-> 注意: `NODE_TLS_REJECT_UNAUTHORIZED=0` で検証を無効化する方法は、通信が保護されなくなるため
-> 使わないでください。必ず CA 証明書を追加する方法で解決します。
-
-## 4. うまくいかないときの確認
-
-```bash
-# px 経由で外に出られるか（200 が返れば OK）
-curl -x http://127.0.0.1:3128 https://api.anthropic.com -sS -o /dev/null -w "%{http_code}\n"
-```
-
-- `curl` が通るのに `claude` が失敗する → 証明書（手順3）を確認
-- `curl` も失敗する → px の上流プロキシ設定（手順1）を確認
-
-### `ECONNREFUSED 127.0.0.1:3128` が出る
-
-`connect ECONNREFUSED 127.0.0.1:3128` は「そのポートに誰も居ない」＝ **px が起動していない**（または別ポート）
-の意味です。px は「ダウンロード済」でも**起動していないと中継しません**。
-
-1. px を起動して開いたままにする（手順1）
-2. 待受ポートを確認: `netstat -ano | findstr LISTENING | findstr :3128`
-   - 何も出ない → `px.ini` の `port=` を確認し、npm 側の proxy をその番号に合わせる
-
-## 補足: Windows でゼロからインストールする手順（社内プロキシ環境）
-
-`claude` が「認識されません」と出る場合はまだ未インストールです。次の順で入れます。
-
-### ① Node.js を入れる
-
-`node -v` / `npm -v` が「認識されません」なら Node.js が未インストールです。
-
-1. ブラウザで <https://nodejs.org/> を開く（ブラウザは社内プロキシを自動で通る）
-2. **LTS 版**の **Windows Installer (.msi) 64-bit** をダウンロードして実行（既定のままでOK）
-3. **PowerShell を開き直して** `node -v` / `npm -v` が表示されることを確認
-
-### ②' npm が「スクリプトの実行が無効」で止まる場合
-
-`npm.ps1 を読み込むことができません`（`PSSecurityException`）が出たら、PowerShell の実行ポリシーを
-現ユーザーのみ緩めます（管理者不要）。会社ポリシーで拒否される場合は `npm` の代わりに `npm.cmd` を使う。
+`npm.ps1 を読み込むことができません`（`PSSecurityException`）が出たら、実行ポリシーをユーザー範囲で緩める:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # 確認は Y
 ```
 
-### ② npm を px 経由に向ける
+（会社ポリシーで拒否される場合は `npm` の代わりに `npm.cmd` を使う）
+
+---
+
+## 2. 社内プロキシのアドレスを調べる
+
+```powershell
+Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" |
+  Select-Object ProxyEnable, ProxyServer, AutoConfigURL
+```
+
+- `ProxyServer` に `<ホスト>:<ポート>`（例 `192.0.2.1:8080`）が出れば、それが社内プロキシ
+- `AutoConfigURL`（PAC ファイル）が出る場合は、PAC が指す実プロキシを使う
+
+以降、この値を `<PROXY>` と書きます（例: `http://192.0.2.1:8080`）。
+
+---
+
+## 3. プロキシが「認証必要」か判定する
+
+```powershell
+curl.exe --ssl-no-revoke -x <PROXY> https://registry.npmjs.org -sS -o NUL -w "%{http_code}`n"
+```
+
+- **`200`** → 認証不要。→ **4A（px 不要・直結）** へ
+- **`407`**（Proxy Authentication Required）→ 認証必要。→ **4B（px 経由）** へ
+
+---
+
+## 4A. 認証不要の場合（推奨・px 不要）
+
+npm をプロキシに直結して Claude Code を入れる:
+
+```powershell
+npm config set proxy       <PROXY>
+npm config set https-proxy <PROXY>
+npm install -g @anthropic-ai/claude-code
+```
+
+実行時もプロキシを使うので、環境変数を設定して起動する（下記「6. 起動」）。
+
+---
+
+## 4B. 認証必要の場合（px を挟む）
+
+px が認証を肩代わりする。px を上流プロキシ付きで起動:
+
+```powershell
+Get-Process px* -ErrorAction SilentlyContinue | Stop-Process -Force
+cd "$HOME\Desktop\PX"
+.\px.exe --proxy=<ホスト:ポート> --save   # 例: --proxy=192.0.2.1:8080
+.\px.exe                                  # この窓は開いたまま
+```
+
+別の窓で npm は **px（既定 127.0.0.1:3128）** に向ける:
 
 ```powershell
 npm config set proxy       http://127.0.0.1:3128
 npm config set https-proxy http://127.0.0.1:3128
-# SSL 検査環境なら社内ルートCA(PEM)も指定
-# npm config set cafile "C:\certs\corp-root-ca.pem"
-```
-
-### ③ Claude Code を入れる
-
-```powershell
 npm install -g @anthropic-ai/claude-code
 ```
 
-インストール後は PowerShell を開き直し、本書「2. Claude Code を px 経由で起動する」に進む。
+> px を使う場合、起動・環境変数設定・claude 起動をまとめる補助スクリプト
+> `scripts/claude-px.ps1` / `scripts/claude-px.sh` を同梱しています。
 
-### 参考: macOS / Linux のネイティブインストーラ
+---
 
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
+## 5. SSL インスペクション（証明書差し替え）がある場合のみ
+
+`npm install` が `self-signed certificate` / `unable to get local issuer certificate` で失敗する場合、
+社内が TLS を検査しています。Windows のルート証明書をまとめて PEM 化し、npm に信頼させる:
+
+```powershell
+$out = "$HOME\Desktop\corp-ca-bundle.pem"
+Get-ChildItem Cert:\LocalMachine\Root | ForEach-Object {
+  $b = [Convert]::ToBase64String($_.RawData, 'InsertLineBreaks')
+  "-----BEGIN CERTIFICATE-----`n$b`n-----END CERTIFICATE-----"
+} | Set-Content -Encoding ascii $out
+npm config set cafile "$out"
+$env:NODE_EXTRA_CA_CERTS = "$out"
+```
+
+> 検証を無効化する `strict-ssl false` / `NODE_TLS_REJECT_UNAUTHORIZED=0` は通信が保護されなくなるため
+> 常用しないこと（切り分け目的の一時使用のみ）。
+
+---
+
+## 6. 起動と認証
+
+```powershell
+$env:HTTP_PROXY  = <PROXY>     # 直結なら社内プロキシ、px経由なら http://127.0.0.1:3128
+$env:HTTPS_PROXY = <PROXY>
+claude --version               # 例: 2.1.216 (Claude Code)
+claude                         # 初回は認証（ログイン or API キー）
+```
+
+`claude` が「認識されません」の場合は PATH 反映待ち。PowerShell を開き直す
+（bin は `%APPDATA%\npm` = `C:\Users\<ユーザー>\AppData\Roaming\npm`）。
+
+### 毎回プロキシを打たなくて済むように（任意）
+
+```powershell
+[Environment]::SetEnvironmentVariable("HTTP_PROXY",  "<PROXY>", "User")
+[Environment]::SetEnvironmentVariable("HTTPS_PROXY", "<PROXY>", "User")
 ```
 
 ---
 
-- プロジェクトの共有メモリは [`CLAUDE.md`](./CLAUDE.md)（Claude Code が自動で読み込みます）
+## トラブルシューティング
+
+| 症状 | 原因 / 対処 |
+| --- | --- |
+| `claude` が「認識されません」 | 未インストール、または PATH 未反映。`npm list -g @anthropic-ai/claude-code` で確認し、無ければ再インストール。あれば PowerShell を開き直す。 |
+| `npm.ps1 を読み込めない`（PSSecurityException） | 実行ポリシー。`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`、または `npm.cmd` を使う。 |
+| `ECONNREFUSED 127.0.0.1:3128` | px を使う設定なのに px が起動していない。px を起動する。**そもそも認証不要なら px をやめて直結（4A）にする。** |
+| `ECONNRESET` / `failed to receive handshake` | px の上流プロキシが未設定で外に中継できていない。`--proxy=` を設定（4B）。**認証不要なら直結（4A）が確実。** |
+| `CRYPT_E_REVOCATION_OFFLINE` | curl（schannel）の失効確認が外に出られない。切り分け時は `curl.exe --ssl-no-revoke` を使う（npm/Node は失効確認しないので通常影響なし）。 |
+| 証明書エラー（self-signed 等） | 社内 SSL インスペクション。手順 5 で CA を信頼させる。 |
+| `postinstall`/`allow-scripts` の警告 | 通常は動作に支障なし。起動時に部品不足が出たら `npm approve-scripts @anthropic-ai/claude-code` → `npm rebuild -g @anthropic-ai/claude-code`。 |
+
+- プロジェクトの共有メモリは [`CLAUDE.md`](./CLAUDE.md)（Claude Code が自動で読み込む）
 - 公式ドキュメント: <https://code.claude.com/docs/>

@@ -3,7 +3,9 @@
 # 事前に別ターミナルで `px` を起動しておくこと（既定 127.0.0.1:3128）。
 set -euo pipefail
 
-# px の待受アドレス。px を別ポートにしている場合はここを変更。
+# プロキシの待受アドレス。既定は px（127.0.0.1:3128）。
+# 認証不要な社内プロキシに直結する場合は PX_ADDR にそのアドレスを指定する。
+#   例: PX_ADDR=http://192.0.2.1:8080 ./scripts/claude-px.sh
 PX_ADDR="${PX_ADDR:-http://127.0.0.1:3128}"
 
 export HTTP_PROXY="$PX_ADDR"

@@ -2,9 +2,13 @@
 
 社内ネットワーク（プロキシ）環境で、ローカルに **Claude Code** をインストールして使うための手順です。
 
-> **結論から**: まず社内プロキシが「認証不要」かを確認してください。認証不要なら **px は不要**で、
-> npm と Claude Code をプロキシに直結するのが一番シンプルです（本リポジトリのセットアップ時はこれで解決）。
-> プロキシが認証（NTLM 等）を要求する場合のみ、px（px-proxy）を挟みます。
+> **結論から**: 社内プロキシは **接続先ドメインごとに認証要否が違う**ことがあります。
+> 判定は必ず **実際に使う宛先（`api.anthropic.com`）** で行ってください。
+> （例: npm レジストリは認証不要でも、`api.anthropic.com` は NTLM 認証必須、というケースが実在します）
+>
+> - 宛先が **認証不要** なら **px は不要**、プロキシに直結が最短。
+> - 宛先が **認証必要（407）** なら **px（px-proxy）を `--auth=NTLM` で挟む**。← 本リポジトリのセットアップはこれで解決。
+>   Node/Claude Code は NTLM を自前でできないため、px が Windows 資格情報で認証を肩代わりします。
 
 ---
 
@@ -55,12 +59,23 @@ Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Setti
 
 ## 3. プロキシが「認証必要」か判定する
 
+**必ず本命の宛先 `api.anthropic.com` で確認する**（ドメインごとに要否が違うため）:
+
 ```powershell
-curl.exe --ssl-no-revoke -x <PROXY> https://registry.npmjs.org -sS -o NUL -w "%{http_code}`n"
+curl.exe --ssl-no-revoke -x <PROXY> https://api.anthropic.com -sS -o NUL -w "%{http_code}`n"
 ```
 
-- **`200`** → 認証不要。→ **4A（px 不要・直結）** へ
+- **`200`/`404` など** → 認証不要。→ **4A（px 不要・直結）** へ
 - **`407`**（Proxy Authentication Required）→ 認証必要。→ **4B（px 経由）** へ
+
+認証必要（407）だった場合、この PC が NTLM シングルサインオンでプロキシを通れるかを確認しておく
+（`--proxy-user :` は現在の Windows ユーザーの資格情報を使う指定）:
+
+```powershell
+curl.exe --ssl-no-revoke --proxy-ntlm --proxy-user : -x <PROXY> https://api.anthropic.com -sS -o NUL -w "%{http_code}`n"
+```
+
+- ここで `200`/`404` が返れば NTLM SSO は通る → **4B の `--auth=NTLM` で px を設定すれば解決**。
 
 ---
 
@@ -80,25 +95,32 @@ npm install -g @anthropic-ai/claude-code
 
 ## 4B. 認証必要の場合（px を挟む）
 
-px が認証を肩代わりする。px を上流プロキシ付きで起動:
+px が認証を肩代わりする。**`--auth=NTLM` を必ず付ける**のが要点
+（`auth` 未指定=ANY だと認証がうまく噛み合わず **502** になることがある。認証方式を NTLM に固定する）:
 
 ```powershell
-Get-Process px* -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process px*,pxw* -ErrorAction SilentlyContinue | Stop-Process -Force
 cd "$HOME\Desktop\PX"
-.\px.exe --proxy=<ホスト:ポート> --save   # 例: --proxy=192.0.2.1:8080
-.\px.exe                                  # この窓は開いたまま
+.\px.exe --proxy=<ホスト:ポート> --auth=NTLM --save   # 例: --proxy=192.0.2.1:8080
+.\px.exe                                              # この窓は開いたまま（設定は px.ini に保存済み）
 ```
 
-別の窓で npm は **px（既定 127.0.0.1:3128）** に向ける:
+> 上流プロキシが Negotiate/Kerberos の場合は `--auth=NEGOTIATE` など、`Proxy-Authenticate` が返す方式に合わせる。
+
+別の窓で、px 経由で本命に出られるか確認してから npm を入れる:
 
 ```powershell
+curl.exe --ssl-no-revoke -x http://127.0.0.1:3128 https://api.anthropic.com -sS -o NUL -w "%{http_code}`n"  # 407/502 以外ならOK
 npm config set proxy       http://127.0.0.1:3128
 npm config set https-proxy http://127.0.0.1:3128
 npm install -g @anthropic-ai/claude-code
 ```
 
-> px を使う場合、起動・環境変数設定・claude 起動をまとめる補助スクリプト
-> `scripts/claude-px.ps1` / `scripts/claude-px.sh` を同梱しています。
+> px を使う場合、環境変数設定＋claude 起動をまとめる補助スクリプト
+> `scripts/claude-px.ps1` / `scripts/claude-px.sh` を同梱（px 本体は別窓で起動しておくこと）。
+>
+> **px のデバッグ**: `.\px.exe --debug` で前面起動すると、各リクエストの上流とのやり取り
+> （`CONNECT`、`407`、`Proxy-Authenticate` の方式、認証結果）が見えて原因特定が速い。
 
 ---
 
@@ -151,6 +173,8 @@ claude                         # 初回は認証（ログイン or API キー）
 | `npm.ps1 を読み込めない`（PSSecurityException） | 実行ポリシー。`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`、または `npm.cmd` を使う。 |
 | `ECONNREFUSED 127.0.0.1:3128` | px を使う設定なのに px が起動していない。px を起動する。**そもそも認証不要なら px をやめて直結（4A）にする。** |
 | `ECONNRESET` / `failed to receive handshake` | px の上流プロキシが未設定で外に中継できていない。`--proxy=` を設定（4B）。**認証不要なら直結（4A）が確実。** |
+| px 経由で全部 `502 (CONNECT tunnel failed)` | px の認証方式が噛み合っていない。`--auth=NTLM`（環境に合わせ NEGOTIATE 等）を付けて px を再起動（4B）。`.\px.exe --debug` でログ確認。 |
+| px 経由で `ERR_SOCKET_CLOSED` / 直結で `407` | その宛先はプロキシ認証が必要。直結ではなく px 経由（4B）にする。判定は 3 章のとおり **api.anthropic.com** で行う。 |
 | `CRYPT_E_REVOCATION_OFFLINE` | curl（schannel）の失効確認が外に出られない。切り分け時は `curl.exe --ssl-no-revoke` を使う（npm/Node は失効確認しないので通常影響なし）。 |
 | 証明書エラー（self-signed 等） | 社内 SSL インスペクション。手順 5 で CA を信頼させる。 |
 | `postinstall`/`allow-scripts` の警告 | 通常は動作に支障なし。起動時に部品不足が出たら `npm approve-scripts @anthropic-ai/claude-code` → `npm rebuild -g @anthropic-ai/claude-code`。 |

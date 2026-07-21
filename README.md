@@ -1,39 +1,67 @@
 # yuki1108
 
-ローカル環境で開発するためのセットアップです。VS Code（`code` コマンド）で開き、
-パッケージランナーで各種コマンドを実行できるようにしています。
+このリポジトリを **ローカル環境で Claude Code から使う** ためのセットアップです。
 
-## 必要なもの
+## 1. 前提
 
-- [Node.js](https://nodejs.org/)（LTS 推奨。このリポジトリは Node 22 で動作確認）
-- [VS Code](https://code.visualstudio.com/) と `code` コマンド
-  - macOS: VS Code を開き、コマンドパレット（`Cmd+Shift+P`）→
-    「Shell Command: Install 'code' command in PATH」を実行
-  - Windows: インストーラーで「PATH に追加」を選択（既定で有効）
+- [Node.js](https://nodejs.org/) 18 以上（ネイティブインストーラを使う場合は不要）
+- Claude の認証情報のどちらか
+  - Claude の subscription（Pro / Max）でログイン、または
+  - [Anthropic Console](https://console.anthropic.com/) の API キー
 
-## ローカルで開く
+## 2. Claude Code をインストール
+
+### 方法A: ネイティブインストーラ（推奨）
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Windows（PowerShell）:
+
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
+
+### 方法B: npm でグローバルインストール
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+### 方法C: インストールせずランナーで実行（px = ランナー の場合）
+
+グローバルに入れず、都度最新を実行したいとき:
+
+```bash
+npx @anthropic-ai/claude-code
+```
+
+## 3. このリポジトリで起動
 
 ```bash
 git clone <このリポジトリのURL>
 cd yuki1108
-code .          # VS Code で開く
+claude          # 方法Cの場合は npx @anthropic-ai/claude-code
 ```
 
-## パッケージランナー（px）について
+初回起動時に認証方法（subscription ログイン / API キー）を選びます。
 
-「px」は文脈により指すものが異なります。よく使う候補と、このリポジトリでの実行例:
+## 4. プロキシ経由で使う場合（px = px-proxy の場合）
 
-| px の解釈 | インストール | 実行例 |
-| --- | --- | --- |
-| `npx`（npm 同梱のランナー） | Node.js に同梱 | `npx <package>` |
-| `pnpm dlx`（`px` として alias されることあり） | `npm i -g pnpm` | `pnpm dlx <package>` |
-| [px-proxy](https://github.com/genotrance/px)（HTTP プロキシ） | `pip install px-proxy` | `px --proxy=...` 経由で通信 |
-
-> あなたの環境の「px」がどれかを教えてもらえれば、この節を確定版に置き換えます。
-
-## スクリプト
+社内プロキシなどを越えて通信する必要があるときは、環境変数を設定してから起動します:
 
 ```bash
-npm install     # 依存関係をインストール
-npm start       # アプリを起動（package.json の start を編集して使用）
+export HTTPS_PROXY="http://127.0.0.1:3128"   # px-proxy の待受ポートに合わせる
+export HTTP_PROXY="http://127.0.0.1:3128"
+claude
 ```
+
+API ゲートウェイを挟む場合は `ANTHROPIC_BASE_URL` を指定します。
+
+## メモ
+
+- プロジェクトの共有メモリは [`CLAUDE.md`](./CLAUDE.md) に書きます（Claude Code が自動で読み込みます）。
+- 参考: 公式ドキュメント <https://code.claude.com/docs/>

@@ -90,14 +90,42 @@ curl -x http://127.0.0.1:3128 https://api.anthropic.com -sS -o /dev/null -w "%{h
 - `curl` が通るのに `claude` が失敗する → 証明書（手順3）を確認
 - `curl` も失敗する → px の上流プロキシ設定（手順1）を確認
 
-## 補足: Claude Code のインストール
+## 補足: Windows でゼロからインストールする手順（社内プロキシ環境）
 
-```bash
-# ネイティブ（推奨）
-curl -fsSL https://claude.ai/install.sh | bash        # macOS / Linux
-# もしくは npm
+`claude` が「認識されません」と出る場合はまだ未インストールです。次の順で入れます。
+
+### ① Node.js を入れる
+
+`node -v` / `npm -v` が「認識されません」なら Node.js が未インストールです。
+
+1. ブラウザで <https://nodejs.org/> を開く（ブラウザは社内プロキシを自動で通る）
+2. **LTS 版**の **Windows Installer (.msi) 64-bit** をダウンロードして実行（既定のままでOK）
+3. **PowerShell を開き直して** `node -v` / `npm -v` が表示されることを確認
+
+### ② npm を px 経由に向ける
+
+```powershell
+npm config set proxy       http://127.0.0.1:3128
+npm config set https-proxy http://127.0.0.1:3128
+# SSL 検査環境なら社内ルートCA(PEM)も指定
+# npm config set cafile "C:\certs\corp-root-ca.pem"
+```
+
+### ③ Claude Code を入れる
+
+```powershell
 npm install -g @anthropic-ai/claude-code
 ```
+
+インストール後は PowerShell を開き直し、本書「2. Claude Code を px 経由で起動する」に進む。
+
+### 参考: macOS / Linux のネイティブインストーラ
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+---
 
 - プロジェクトの共有メモリは [`CLAUDE.md`](./CLAUDE.md)（Claude Code が自動で読み込みます）
 - 公式ドキュメント: <https://code.claude.com/docs/>

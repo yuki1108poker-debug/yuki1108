@@ -116,8 +116,13 @@ npm config set https-proxy http://127.0.0.1:3128
 npm install -g @anthropic-ai/claude-code
 ```
 
-> px を使う場合、環境変数設定＋claude 起動をまとめる補助スクリプト
-> `scripts/claude-px.ps1` / `scripts/claude-px.sh` を同梱（px 本体は別窓で起動しておくこと）。
+> **ワンコマンド起動**: `scripts/start-claude.ps1` を使うと「px 起動確認 → 無ければ設定して起動 →
+> SSL検査(ESET等)向け証明書対策 → 環境変数を px に向けて claude 起動」まで自動化できる。
+> ```powershell
+> .\scripts\start-claude.ps1                      # 既定（proxy=192.168.221.3:8080）
+> .\scripts\start-claude.ps1 -Proxy 10.0.0.1:8080 # プロキシ/場所を変える場合
+> ```
+> 単純に環境変数だけ設定する軽量版は `scripts/claude-px.ps1` / `scripts/claude-px.sh`。
 >
 > **px のデバッグ**: `.\px.exe --debug` で前面起動すると、各リクエストの上流とのやり取り
 > （`CONNECT`、`407`、`Proxy-Authenticate` の方式、認証結果）が見えて原因特定が速い。

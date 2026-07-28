@@ -220,5 +220,22 @@ npm install -g @anthropic-ai/claude-code@2.1.112     # 最後の Node ベース�
 
 ---
 
+## 認証プロキシが多接続で 407 になる場合（i-FILTER 等・IT 対応必須）
+
+px の NTLM が単発リクエスト（`curl`）では通る（`200`/`401`/`404`）のに、Claude Code のチャットだけ
+**`407` = 認証に失敗**（例: Digital Arts i-FILTER のブロックページ）になることがある。
+
+原因: **認証プロキシが負荷分散（複数ノード）構成**だと、NTLM は「接続ごと・ノードごと」に認証が必要なため、
+Claude Code が張る多数の同時接続の一部が別ノードに振られて認証に失敗する（ブロック応答の IP がリクエストごとに
+変動するのが目印。例 `172.17.10.214` / `172.17.12.119`）。**これはクライアント側では解決できない。**
+
+対処: **IT に依頼**して、以下を i-FILTER 等の **プロキシ認証の対象外（バイパス/ホワイトリスト）** にしてもらう。
+
+- `api.anthropic.com` / `claude.ai` / `console.anthropic.com`
+
+暫定: Web 版 <https://claude.ai/code> を使う（プロキシ認証の影響を受けない）。
+
+---
+
 - プロジェクトの共有メモリは [`CLAUDE.md`](./CLAUDE.md)（Claude Code が自動で読み込む）
 - 公式ドキュメント: <https://code.claude.com/docs/>

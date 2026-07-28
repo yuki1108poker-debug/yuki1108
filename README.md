@@ -178,6 +178,42 @@ claude                         # 初回は認証（ログイン or API キー）
 | `CRYPT_E_REVOCATION_OFFLINE` | curl（schannel）の失効確認が外に出られない。切り分け時は `curl.exe --ssl-no-revoke` を使う（npm/Node は失効確認しないので通常影響なし）。 |
 | 証明書エラー（self-signed 等） | 社内 SSL インスペクション。手順 5 で CA を信頼させる。 |
 | `postinstall`/`allow-scripts` の警告 | 通常は動作に支障なし。起動時に部品不足が出たら `npm approve-scripts @anthropic-ai/claude-code` → `npm rebuild -g @anthropic-ai/claude-code`。 |
+| 起動直後に `Bun has crashed` / `Segmentation fault` | 実行エンジン Bun が常駐ソフトのDLL注入で落ちている。特に **VMware Horizon 等の VDI**（`ctiuser.dll` が注入される）で発生。→ 下記「VDI で Bun がクラッシュする場合」。 |
+
+---
+
+## VDI（VMware Horizon 等）で Bun がクラッシュする場合
+
+Claude Code 2.x は実行エンジンに **Bun** を使う（`bin/claude.exe` は 265MB の Bun コンパイル済みバイナリ）。
+VMware Horizon などの VDI では、エージェントの DLL（例 `C:\Windows\System32\ctiuser.dll`, 提供元 VMware）が
+プロセスに注入され、**Bun が起動直後に Segmentation fault で落ちる**。`claude -p "..."`（ヘッドレス）でも落ちる。
+
+診断:
+
+```powershell
+# クラッシュログに出る DLL の提供元を確認
+Get-ChildItem -Path "C:\Windows" -Recurse -Filter ctiuser.dll -Force -ErrorAction SilentlyContinue |
+  Select-Object FullName, @{n='会社';e={$_.VersionInfo.CompanyName}}
+```
+
+### 回避策: Node ベースの版に固定する（Bun を使わない）
+
+この環境でも **Node 自体は正常に動く**（`node -v` / `npm install` は落ちない）。Claude Code は
+**2.1.112 以前が Node ベース（`bin` = `cli.js`）**、2.1.114 以降が Bun バイナリ。最後の Node 版に固定すれば回避できる。
+
+```powershell
+npm install -g @anthropic-ai/claude-code@2.1.112     # 最後の Node ベース版
+[Environment]::SetEnvironmentVariable("DISABLE_AUTOUPDATER","1","User")  # Bun版へ戻らないよう自動更新を無効化
+```
+
+> ⚠️ その後 `@latest` に更新すると Bun 版に戻って再発する。更新は 2.1.112 以下にとどめる。
+
+### 他の選択肢
+
+- **IT に依頼**: VDI（VMware Horizon）側で `claude.exe` / `node.exe` への DLL 注入を除外してもらう（最新の Bun 版を使いたい場合）。
+- **Web 版**: <https://claude.ai/code>（設定不要。ローカルではないが即利用可）。
+
+---
 
 - プロジェクトの共有メモリは [`CLAUDE.md`](./CLAUDE.md)（Claude Code が自動で読み込む）
 - 公式ドキュメント: <https://code.claude.com/docs/>

@@ -220,20 +220,31 @@ npm install -g @anthropic-ai/claude-code@2.1.112     # 最後の Node ベース�
 
 ---
 
-## 認証プロキシが多接続で 407 になる場合（i-FILTER 等・IT 対応必須）
+## curl は通るのに claude のチャットだけ 407 になる場合（解決済み・重要）
 
-px の NTLM が単発リクエスト（`curl`）では通る（`200`/`401`/`404`）のに、Claude Code のチャットだけ
-**`407` = 認証に失敗**（例: Digital Arts i-FILTER のブロックページ）になることがある。
+症状: px 経由の `curl` は単発でも並列でも大きい POST でも全部通る（`401`/`404`）のに、
+Claude Code のチャット送信だけ **生の 407（i-FILTER のブロックページ HTML）** が返る。
+px のデバッグログでは全接続のトンネル確立（`200 Connection established`）に成功している。
 
-原因: **認証プロキシが負荷分散（複数ノード）構成**だと、NTLM は「接続ごと・ノードごと」に認証が必要なため、
-Claude Code が張る多数の同時接続の一部が別ノードに振られて認証に失敗する（ブロック応答の IP がリクエストごとに
-変動するのが目印。例 `172.17.10.214` / `172.17.12.119`）。**これはクライアント側では解決できない。**
+**真の原因**: Claude Code の一部の通信は、環境変数 `HTTPS_PROXY` ではなく
+**Windows のシステムプロキシ設定を直接読む**。その経路は NTLM を話せないため、
+社内プロキシに素の CONNECT を送って 407 を食らっていた（px は素通りされていた）。
 
-対処: **IT に依頼**して、以下を i-FILTER 等の **プロキシ認証の対象外（バイパス/ホワイトリスト）** にしてもらう。
+**解決**: Windows のシステムプロキシを px に向ける。これで全経路が px を通る。
 
-- `api.anthropic.com` / `claude.ai` / `console.anthropic.com`
+```powershell
+Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" -Name ProxyServer -Value "127.0.0.1:3128"
+```
 
-暫定: Web 版 <https://claude.ai/code> を使う（プロキシ認証の影響を受けない）。
+注意:
+- PC 全体（ブラウザ含む）が px 経由になるため、**px を常駐させること**（px が止まるとブラウザも止まる）。
+- 戻す場合: 同コマンドで `-Value "<元のプロキシ:ポート>"`（例 `192.168.221.3:8080`）。
+- `scripts/start-claude.ps1`（最終版）はこの設定変更まで自動で行う。
+
+切り分けメモ（この結論に至った手順）:
+1. `px.exe --debug` でリクエスト単位のログを取る → 全 CONNECT が 200 なのに claude に 407 が届く矛盾を確認
+2. curl で UA/ヘッダ/POST サイズを claude に似せても再現しない → 中身による規制ではない
+3. 残る説明は「px を通らない経路」のみ → システムプロキシを px に向けて解決
 
 ---
 
